@@ -9,6 +9,8 @@ import us.monoid.web.JSONResource;
 import us.monoid.json.JSONException;
 import us.monoid.json.JSONObject;
 
+import java.io.OutputStream;
+
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
 import org.apache.http.NameValuePair;
@@ -25,12 +27,15 @@ import org.keycloak.representations.AccessTokenResponse;
 import org.keycloak.representations.idm.RoleRepresentation;
 import org.keycloak.representations.idm.RealmRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
+import org.keycloak.representations.idm.ClientRepresentation;
+import org.keycloak.representations.idm.UserRepresentation;
 import org.keycloak.util.HostUtils;
 import org.keycloak.util.JsonSerialization;
 import org.keycloak.util.KeycloakUriBuilder;
 import org.keycloak.util.UriUtils;
 
 import java.net.URI;
+import java.net.HttpURLConnection;
 import java.net.URLConnection;
 
 import java.io.ByteArrayOutputStream;
@@ -108,6 +113,12 @@ public class KeycloakAdminClient
   public void delete(String url) throws IOException, JSONException
   {
     getResty().json(getUrl(url), Resty.delete());
+  }
+  
+  public <T> void delete(Class<T> type, T data, String url) throws IOException, JSONException
+  {
+    String json = mapper.writer().writeValueAsString(data);
+    getResty().json(getUrl(url), new DeleteContent("application/json", json.getBytes("UTF-8")));
   }
 
   public <T> T create(Class<T> type, T data, String url) throws IOException, JSONException
@@ -209,6 +220,35 @@ System.out.println("\n\nLogin URL: " + uri + "\n\n\n");
         String.format("/auth/admin/realms/%s/roles", realm) );
   }
 
+  public void createRealmClient(String realm, ClientRepresentation client) throws Exception
+  {
+    create(ClientRepresentation.class, client, 
+        String.format("/auth/admin/realms/%s/clients", realm));
+  }
+  
+  public void deleteRealmClient(String realm, String client) throws Exception
+  {
+    delete(String.format("/auth/admin/realms/%s/clients/%s", realm, client));
+  }
+
+  public List<ClientRepresentation> getRealmClients(String realm) throws Exception
+  {
+    return getAll(ClientRepresentation.class, 
+        String.format("/auth/admin/realms/%s/clients", realm));
+  }
+
+  public ClientRepresentation getRealmClient(String realm, String id) throws Exception
+  {
+    return getObject(ClientRepresentation.class,
+        String.format("/auth/admin/realms/%s/clients/%s", realm, id));
+  }
+
+  public void createRealm(RealmRepresentation realm) throws Exception
+  {
+    create(RealmRepresentation.class, realm,
+        String.format("/auth/admin/realms"));
+  }
+
   public List<RealmRepresentation> getRealms() throws Exception
   {
     return getAll(RealmRepresentation.class, "/auth/admin/realms");
@@ -219,22 +259,51 @@ System.out.println("\n\nLogin URL: " + uri + "\n\n\n");
     return getObject(RealmRepresentation.class, 
         String.format("/auth/admin/realms/%s", name));
   }
-
-  public void createRealm(RealmRepresentation realm) throws Exception
-  {
-    create(RealmRepresentation.class, realm, 
-        String.format("/auth/admin/realms"));
-  }
-  
+ 
   public void deleteRealm(String realm) throws Exception
   {
     delete(String.format("/auth/admin/realms/%s", realm));
   }
 
-  public List<UserRepresentation> getUsers(String realm, String query) throws Exception
+  public UserRepresentation getRealmUser(String realm, String userId) throws Exception
+  {
+    return getObject(UserRepresentation.class,
+        String.format("/auth/admin/realms/%s/users/%s", realm, userId));
+  }
+
+  public List<UserRepresentation> getRealmUsers(String realm, String query) throws Exception
   {
     return getAll(UserRepresentation.class, String.format(
         "/auth/admin/realms/%s/users%s", realm, query));
+  }
+
+  public void createRealmUser(String realm, UserRepresentation user) throws Exception
+  {
+    create(UserRepresentation.class, user,
+        String.format("/auth/admin/realms/%s/users", realm));
+  }
+
+  public void deleteRealmUser(String realm, String userId) throws Exception
+  {
+    delete(String.format("/auth/admin/realms/%s/users/%s", realm, userId));
+  }
+
+  public List<RoleRepresentation> getAvailableRealmRolesForUser(String realm, String userId) throws Exception
+  {
+    return getAll(RoleRepresentation.class, String.format(
+        "/auth/admin/realms/%s/users/%s/role-mappings/realm/available", realm, userId));
+  }
+
+  public void addRealmRolesToUser(String realm, String userId, List<RoleRepresentation> roles) throws Exception
+  {
+    create(List.class, roles, String.format(
+        "/auth/admin/realms/%s/users/%s/role-mappings/realm", realm, userId));
+  }
+
+  public void deleteRealmRolesForUser(String realm, String userId, List<RoleRepresentation> roles) throws Exception
+  {
+    delete(List.class, roles, String.format(
+        "/auth/admin/realms/%s/users/%s/role-mappings/realm", realm, userId));
   }
 
   private class Opts extends Resty.Option
@@ -248,5 +317,26 @@ System.out.println("\n\nLogin URL: " + uri + "\n\n\n");
 
   public static void main(String[] args)
   {
+  }
+
+  private class DeleteContent extends Content
+  {
+    public DeleteContent(String mime, byte[] data)
+    {
+      super(mime, data);
+    }
+
+    @Override 
+    public void addContent(URLConnection con) throws IOException
+    {
+      con.setDoOutput(true);
+      ((HttpURLConnection)con).setRequestMethod("DELETE");
+      con.addRequestProperty("Content-Type", mime);
+      con.addRequestProperty("Content-Length", String.valueOf(content.length));
+      OutputStream os = con.getOutputStream();
+      writeContent(os);
+      os.close();
+      //super.addContent(con);
+    }
   }
 }

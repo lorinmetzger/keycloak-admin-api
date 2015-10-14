@@ -294,6 +294,12 @@ System.out.println("\n\nLogin URL: " + uri + "\n\n\n");
         "/auth/admin/realms/%s/users/%s/role-mappings/realm/available", realm, userId));
   }
 
+  public List<RoleRepresentation> getRealmRolesForUser(String realm, String userId) throws Exception
+  {
+    return getAll(RoleRepresentation.class, String.format(
+        "/auth/admin/realms/%s/users/%s/role-mappings/realm", realm, userId));
+  }
+
   public void addRealmRolesToUser(String realm, String userId, List<RoleRepresentation> roles) throws Exception
   {
     create(List.class, roles, String.format(

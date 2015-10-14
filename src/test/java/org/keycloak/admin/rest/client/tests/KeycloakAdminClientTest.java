@@ -138,6 +138,7 @@ public class KeycloakAdminClientTest
           System.out.println("\n\nAvailable role: " + role.getName() + "\n\n");
         }
         client.addRealmRolesToUser("trucklogger", user.getId(), roles);
+        roles = client.getRealmRolesForUser("trucklogger", user.getId());
         client.deleteRealmRolesForUser("trucklogger", user.getId(), roles);
       }
     }

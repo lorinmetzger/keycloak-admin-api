@@ -9,6 +9,7 @@ import org.keycloak.representations.idm.UserRepresentation;
 
 import org.junit.Test;
 import org.junit.Before;
+import org.junit.After;
 import static org.junit.Assert.*;
 
 import java.util.List;
@@ -23,9 +24,14 @@ public class KeycloakAdminClientTest
   @Before
   public void setUp() throws Exception
   {
-    client = new KeycloakAdminClient("http://localhost:8080");
-    //System.out.println("Test were run..." + 
-    client.login("admin", "admin").getToken();
+    client = new KeycloakAdminClient("http://localhost:8080", "admin", "admin", "master", "admin-client");
+    client.login().getToken();
+  }
+
+  @After
+  public void tearDown() throws Exception
+  {
+    client.logout();
   }
 
   @Test

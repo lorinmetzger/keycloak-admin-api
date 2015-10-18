@@ -29,6 +29,7 @@ import org.keycloak.representations.idm.RealmRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
 import org.keycloak.representations.idm.ClientRepresentation;
 import org.keycloak.representations.idm.UserRepresentation;
+import org.keycloak.representations.idm.CredentialRepresentation;
 import org.keycloak.util.HostUtils;
 import org.keycloak.util.JsonSerialization;
 import org.keycloak.util.KeycloakUriBuilder;
@@ -65,10 +66,22 @@ public class KeycloakAdminClient
 
   private ObjectMapper mapper;
 
-  public KeycloakAdminClient(String url)
+  private String username;
+
+  private String password;
+
+  private String realm;
+
+  private String realmClient;
+
+  public KeycloakAdminClient(String url, String username, String password, String realm, String client)
   {
     this.baseUrl = url;
     this.mapper = new ObjectMapper();
+    this.username = username;
+    this.password = password;
+    this.realm = realm;
+    this.realmClient = client;
   }
 
   public String getUrl(String base)
@@ -133,9 +146,14 @@ public class KeycloakAdminClient
       //result = mapper.readValue(json, type);
     }
     return result;
-
   }
 
+  public <T> void put(Class<T> type, T data, String url) throws IOException, JSONException
+  {
+    String json = mapper.writer().writeValueAsString(data);
+    JSONResource res = getResty().json(getUrl(url), 
+        getResty().put(new Content("application/json", json.getBytes("UTF-8"))));
+  }
 
   public <T> T getObject(Class<T> type, String url) throws IOException, JSONException
   {
@@ -162,22 +180,49 @@ public class KeycloakAdminClient
     return result;
   }
 
+  public void logout() throws IOException 
+  {
+    HttpClient client = new DefaultHttpClient();
+    try 
+    {
+      HttpPost post = new HttpPost(KeycloakUriBuilder.fromUri(baseUrl + "/auth")
+          .path(ServiceUrlConstants.TOKEN_SERVICE_LOGOUT_PATH)
+          .build(realm));
+      List<NameValuePair> formparams = new ArrayList<NameValuePair>();
+      formparams.add(new BasicNameValuePair(OAuth2Constants.REFRESH_TOKEN, token.getRefreshToken()));
+      formparams.add(new BasicNameValuePair(OAuth2Constants.CLIENT_ID, realmClient));
+      UrlEncodedFormEntity form = new UrlEncodedFormEntity(formparams, "UTF-8");
+      post.setEntity(form);
+      HttpResponse response = client.execute(post);
+      boolean status = response.getStatusLine().getStatusCode() != 204;
+      HttpEntity entity = response.getEntity();
+      if (entity == null) {
+        return;
+      }
+      InputStream is = entity.getContent();
+      if (is != null) is.close();
+      if (status) {
+        throw new RuntimeException("failed to logout");
+      }
+    } finally {
+        client.getConnectionManager().shutdown();
+    }
+  }
 
-  public AccessTokenResponse login(String username, String password) throws IOException 
+  public AccessTokenResponse login() throws IOException 
   {
     token = null;
     HttpClient client = new DefaultHttpClient();
     try 
     {
       URI uri =  KeycloakUriBuilder.fromUri((baseUrl + "/auth"))
-          .path(ServiceUrlConstants.TOKEN_PATH).build("master");
+          .path(ServiceUrlConstants.TOKEN_PATH).build(realm);
       HttpPost post = new HttpPost(uri);
-System.out.println("\n\nLogin URL: " + uri + "\n\n\n");
       List <NameValuePair> formparams = new ArrayList <NameValuePair>();
       formparams.add(new BasicNameValuePair("username", username));
       formparams.add(new BasicNameValuePair("password", password));
       formparams.add(new BasicNameValuePair(OAuth2Constants.GRANT_TYPE, "password"));
-      formparams.add(new BasicNameValuePair(OAuth2Constants.CLIENT_ID, "admin-client"));
+      formparams.add(new BasicNameValuePair(OAuth2Constants.CLIENT_ID, realmClient));
       UrlEncodedFormEntity form = new UrlEncodedFormEntity(formparams, "UTF-8");
       post.setEntity(form);
       HttpResponse response = client.execute(post);
@@ -283,6 +328,12 @@ System.out.println("\n\nLogin URL: " + uri + "\n\n\n");
         String.format("/auth/admin/realms/%s/users", realm));
   }
 
+  public void updateRealmUser(String realm, UserRepresentation user) throws Exception
+  {
+    put(UserRepresentation.class, user, 
+        String.format("/auth/admin/realms/%s/users/%s", realm, user.getId()));
+  }
+
   public void deleteRealmUser(String realm, String userId) throws Exception
   {
     delete(String.format("/auth/admin/realms/%s/users/%s", realm, userId));
@@ -310,6 +361,12 @@ System.out.println("\n\nLogin URL: " + uri + "\n\n\n");
   {
     delete(List.class, roles, String.format(
         "/auth/admin/realms/%s/users/%s/role-mappings/realm", realm, userId));
+  }
+
+  public void resetPassword(String realm, String user, CredentialRepresentation creds) throws Exception
+  {
+    put(CredentialRepresentation.class, creds,
+        String.format("/auth/admin/realms/%s/users/%s/reset-password", realm, user));
   }
 
   private class Opts extends Resty.Option
